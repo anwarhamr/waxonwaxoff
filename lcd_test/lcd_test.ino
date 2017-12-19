@@ -42,7 +42,8 @@ http://www.arduino.cc/en/Tutorial/LiquidCrystal
 #define btnDown ((int) 3)
 #define btnRight ((int) 4)
 #define btnSelect ((int) 5)
-
+#define startOfTrackSensor ((int)0)
+#define endOfTrackSensor ((int)1)
  
 // include the library code:
 #include <LiquidCrystal.h>
@@ -58,6 +59,10 @@ int isProgramRunning;
 int currentPassCount;
 unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
 unsigned long debounceDelay = 200;    // the debounce time; increase if the output flickers
+int motorDirection = 1;
+int startOfTrackSensorValue = LOW;
+int endOfTrackSensorValue = LOW;
+
 
 unsigned char GetKey(int value)
 {
@@ -75,6 +80,7 @@ unsigned char GetKey(int value)
 void setup() 
 {
   int tmpInt;
+  pinMode(startOfTrackSensor, INPUT);
   // set up the LCD's number of columns and rows: 
   lcd.begin(16, 2);
   // Print a message to the LCD.
@@ -148,20 +154,37 @@ void handleDisplay(){
   else{
     //todo: don't repaint so often and move code to another library.
     lcd.setCursor(0,0);
-    lcd.print("Ps:");
+    lcd.print("Ps: ");
     lcd.print(passes);
-    lcd.print("  Spd:");
+    lcd.print("  Spd: ");
     lcd.print(speed);
     lcd.setCursor(0,1);
-    lcd.print("Remaining:");
+    lcd.print("Remaining: ");
     lcd.print(passes - currentPassCount);
     
   }
 }
+void handleMotor(){
+  if (isProgramRunning){
+    //check end of track switch
+    if (endOfTrackSensor || startOfTrackSensor){
+      
+    }
+     
+    //move motor
+  }
+}
+void handleEndOfTrackSensors(){
+  endOfTrackSensorValue = digitalRead(endOfTrackSensor);  
+  startOfTrackSensorValue = digitalRead(startOfTrackSensor);  
+}
+
 void loop() 
 {
-   handleButtons();
-   handleDisplay(); 
+   handleEndOfTrackSensors();
+   //handleButtons();
+   //handleDisplay(); 
+   //handleMotor();
 }
    
 
