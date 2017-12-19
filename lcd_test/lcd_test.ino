@@ -39,7 +39,7 @@ http://www.arduino.cc/en/Tutorial/LiquidCrystal
  */
  // include the library code:
 #include <LiquidCrystal.h>
-#include <Stepper.h>
+#include <AccelStepper.h>
 
 #define btnLeft ((int) 1)
 #define btnUp ((int) 2)
@@ -58,8 +58,9 @@ const int stepsPerRevolution = 200;  // change this to fit the number of steps p
 // for your motor
 
 // initialize the stepper library on pins 8 through 11:
-Stepper myStepper(stepsPerRevolution, 8, 9, 10, 11);
- 
+AccelStepper stepper(stepsPerRevolution, 1,12,13);
+int pos = 3600;
+
 int sensorValue ;
 int speed; 
 int passes;
@@ -70,44 +71,59 @@ unsigned long debounceDelay = 200;    // the debounce time; increase if the outp
 int motorDirection = 1;
 int startOfTrackSensorValue = LOW;
 int endOfTrackSensorValue = LOW;
-
+int trackSensorOn = LOW;
 
 unsigned char GetKey(int value)
 {
   Serial.print("keydown");
   Serial.println(value);
+  //todo: check on these values we should only have 5 buttons not 6...
   if (value < 620){ return 5;}
   if (value < 822){ return 4;}
   if (value < 855){ return 1;}
   if (value < 920){ return 3;}
   if (value < 940){ return 2;}
   if (value < 1050){ return 0;}
- 
 }
  
 void setup() 
 {
   int tmpInt;
-  pinMode(startOfTrackSensor, INPUT);
+  pinMode(startOfTrackSensor, INPUT_PULLUP);
+  pinMode(endOfTrackSensor, INPUT_PULLUP);
   // set up the LCD's number of columns and rows: 
   lcd.begin(16, 2);
-  // Print a message to the LCD.
   lcd.print("Show me... ");
   lcd.setCursor(0,1);
-  lcd.print("  wax on wax off!");
+  lcd.print("  wax on, wax off!");
+  
+  //init values
   sensorValue  = 1023;
   passes = 2;
   speed  = 1;
   isProgramRunning = 0;
   currentPassCount = 0;
-  myStepper.setSpeed(60);
+  stepper.setMaxSpeed(3000);
+  stepper.setAcceleration(1000);
   
   Serial.begin(9600); 
   delay(2000);
 }
 
+void loop() 
+{
+  if (isProgramRunning){
+    //todo check if we've written latest run values to eeprom and load in startup.
+    handleEndOfTrackSensors();
+    handleMotor();
+    handleEndOfProgram();
+  }
+  handleButtons();
+  handleDisplay(); 
+   
+}
+
 void handleButtons(){
-  
   unsigned char key;
   if(sensorValue != analogRead(A0))
   {
@@ -116,26 +132,20 @@ void handleButtons(){
    
        lastDebounceTime = millis();
        sensorValue = analogRead(A0);
-      key = GetKey(sensorValue);
-      if (key == btnLeft)
-       {
+       key = GetKey(sensorValue);
+      if (key == btnLeft){
         passes -= 1;
         if (passes < 1){ 
           passes = 1;
         }
        }
-      if (key == btnRight)
-        {
+      if (key == btnRight){
         passes += 1;
-        
         }
-
-      if (key == btnUp)
-        {
+      if (key == btnUp){
         speed += 1;
         }
-      if (key == btnDown)
-        {
+      if (key == btnDown){
         speed -= 1;
         if (speed < 1){
           speed =1;
@@ -147,7 +157,7 @@ void handleButtons(){
      }
   }
 }
-int lastDisplayPassCount;
+
 void handleDisplay(){
   if (!isProgramRunning){
     lcd.setCursor(0, 0);
@@ -161,6 +171,15 @@ void handleDisplay(){
   }
   else{
     //todo: don't repaint so often and move code to another library.
+    if (startOfTrackSensorValue) {
+      lcd.print("**** Start of Track ****");
+      return;
+    }
+    if (endOfTrackSensorValue) {
+      lcd.print("**** End of Track ****");
+      return;
+    }
+    lcd.clear()
     lcd.setCursor(0,0);
     lcd.print("Ps: ");
     lcd.print(passes);
@@ -173,48 +192,54 @@ void handleDisplay(){
   }
 }
 void handleMotor(){
-  if (isProgramRunning){
-    //check end of track switch
-    Serial.println("clockwise");
-    myStepper.step(stepsPerRevolution * motorDirection);
-    Serial.print("stepping");
-    Serial.println(stepsPerRevolution * motorDirection);
+  Serial.print("motor ");
+  if (stepper.distanceToGo() == 0){
     delay(500);
-    
+    pos *= motorDirection;
+    stepper.moveTo(pos);
+    Serial.print("moving to ");
+    Serial.print(pos);
   }
+  stepper.run();
 }
+
 void handleEndOfTrackSensors(){
-  endOfTrackSensorValue = !digitalRead(endOfTrackSensor);  
-  startOfTrackSensorValue = !digitalRead(startOfTrackSensor);  
-  if (endOfTrackSensorValue){
+  
+  endOfTrackSensorValue = digitalRead(endOfTrackSensor);  
+  startOfTrackSensorValue = digitalRead(startOfTrackSensor);  
+  Serial.print(trackSensorOn);
+  Serial.print(" ");
+  Serial.print(startOfTrackSensorValue);
+  Serial.print(" ");
+  Serial.print(endOfTrackSensorValue);
+  Serial.println(" ");
+  
+  if (trackSensorOn && (endOfTrackSensorValue || startOfTrackSensorValue)){
+    // we should not do anything until the last sensor has been returned to normal
+    return;
+  }
+  if (!endOfTrackSensorValue){
     motorDirection = -1;
     currentPassCount +=1;
     digitalWrite(10,LOW); // turn off lamp
     Serial.println("end of track");
   }
-  if (startOfTrackSensorValue){
+  if (!startOfTrackSensorValue){
     motorDirection = 1;
     // turn on the lamp
     digitalWrite(10,HIGH); // turn on lamp
     Serial.println("start of track");
   }
+   trackSensorOn = endOfTrackSensorValue || startOfTrackSensorValue;
 }
 
 void handleEndOfProgram(){
+  
   if (currentPassCount == passes && motorDirection == 1){
     isProgramRunning = 0;
     currentPassCount = 0;
     digitalWrite(10,LOW);
   }
-}
-void loop() 
-{
-   
-   handleEndOfTrackSensors();
-   handleEndOfProgram();
-   handleButtons();
-   handleDisplay(); 
-   handleMotor();
 }
    
 
