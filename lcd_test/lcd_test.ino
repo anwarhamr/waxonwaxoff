@@ -37,20 +37,28 @@
 http://www.arduino.cc/en/Tutorial/LiquidCrystal
  
  */
+ // include the library code:
+#include <LiquidCrystal.h>
+#include <Stepper.h>
+
 #define btnLeft ((int) 1)
 #define btnUp ((int) 2)
 #define btnDown ((int) 3)
 #define btnRight ((int) 4)
 #define btnSelect ((int) 5)
-#define startOfTrackSensor ((int)0)
-#define endOfTrackSensor ((int)1)
+#define startOfTrackSensor ((int)2)
+#define endOfTrackSensor ((int)3)
  
-// include the library code:
-#include <LiquidCrystal.h>
- 
+
 // initialize the library with the numbers of the interface pins
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
- 
+
+
+const int stepsPerRevolution = 200;  // change this to fit the number of steps per revolution current 1.8 deg
+// for your motor
+
+// initialize the stepper library on pins 8 through 11:
+Stepper myStepper(stepsPerRevolution, 8, 9, 10, 11);
  
 int sensorValue ;
 int speed; 
@@ -88,13 +96,13 @@ void setup()
   lcd.setCursor(0,1);
   lcd.print("  wax on wax off!");
   sensorValue  = 1023;
-   Serial.begin(9600); 
   passes = 2;
   speed  = 1;
   isProgramRunning = 0;
   currentPassCount = 0;
-
+  myStepper.setSpeed(60);
   
+  Serial.begin(9600); 
   delay(2000);
 }
 
@@ -167,24 +175,46 @@ void handleDisplay(){
 void handleMotor(){
   if (isProgramRunning){
     //check end of track switch
-    if (endOfTrackSensor || startOfTrackSensor){
-      
-    }
-     
-    //move motor
+    Serial.println("clockwise");
+    myStepper.step(stepsPerRevolution * motorDirection);
+    Serial.print("stepping");
+    Serial.println(stepsPerRevolution * motorDirection);
+    delay(500);
+    
   }
 }
 void handleEndOfTrackSensors(){
-  endOfTrackSensorValue = digitalRead(endOfTrackSensor);  
-  startOfTrackSensorValue = digitalRead(startOfTrackSensor);  
+  endOfTrackSensorValue = !digitalRead(endOfTrackSensor);  
+  startOfTrackSensorValue = !digitalRead(startOfTrackSensor);  
+  if (endOfTrackSensorValue){
+    motorDirection = -1;
+    currentPassCount +=1;
+    digitalWrite(10,LOW); // turn off lamp
+    Serial.println("end of track");
+  }
+  if (startOfTrackSensorValue){
+    motorDirection = 1;
+    // turn on the lamp
+    digitalWrite(10,HIGH); // turn on lamp
+    Serial.println("start of track");
+  }
 }
 
+void handleEndOfProgram(){
+  if (currentPassCount == passes && motorDirection == 1){
+    isProgramRunning = 0;
+    currentPassCount = 0;
+    digitalWrite(10,LOW);
+  }
+}
 void loop() 
 {
+   
    handleEndOfTrackSensors();
-   //handleButtons();
-   //handleDisplay(); 
-   //handleMotor();
+   handleEndOfProgram();
+   handleButtons();
+   handleDisplay(); 
+   handleMotor();
 }
    
 
