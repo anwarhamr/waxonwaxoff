@@ -19,8 +19,10 @@ http://www.arduino.cc/en/Tutorial/LiquidCrystal
 #define startOfTrackSensor ((int)2)
 #define endOfTrackSensor ((int)3)
 #define heater ((int)11)
+#define motor1 ((int)12)
+#define motor2 ((int)13)
 //#define enablePin ((int)??)
-#define speedMultiplier ((int)100000)
+#define speedMultiplier ((int)10000)
 
 #define Stopped ((int) 0)
 #define Starting ((int) 2)
@@ -64,11 +66,15 @@ void setup()
   int tmpInt;
   pinMode(startOfTrackSensor, INPUT);
   pinMode(endOfTrackSensor, INPUT);
+  pinMode(heater,OUTPUT);
+  pinMode(motor1,OUTPUT);
+  pinMode(motor2,OUTPUT);
   // set up the LCD's number of columns and rows: 
   lcd.begin(16, 2);
   lcd.print("Show me... ");
   lcd.setCursor(0,1);
   lcd.print("  wax on, wax off!");
+  lcd.noAutoscroll();
   
   //init values
   sensorValue  = 1023;
@@ -86,34 +92,39 @@ void setup()
 void loop() 
 {
   handleEndOfTrackSensors();
+  if (millis() % 600 == 1){
+    handleDisplay(); 
+  }
+  if (programStatus == Stopped){
+    handleButtons();
+  }
   if (programStatus == Starting || programStatus == Initializing){
     initialize();
-  }
-  else{
-    handleButtons();
-    handleDisplay(); 
-    //displayDebug();
   }
   if (programStatus == Initialized){
     Serial.println("setting run params");
     digitalWrite(heater,HIGH);
-    stepper.setAcceleration(100000);
+    stepper.setAcceleration(500000);
     stepper.setMaxSpeed(speed* speedMultiplier);
     programStatus = Running;
   }
   if (programStatus == Running){
     //todo check if we've written latest run values to eeprom and load in startup.
-    if (currentPassCount <= passes){
-      Serial.print("running ");
-      Serial.print(motorDirection);
-      Serial.print(" currentPass:");
-      Serial.println(currentPassCount);
-      stepper.move(pos * motorDirection);
-      stepper.run();
+    if (currentPassCount <= passes || motorDirection == -1){
       if (motorDirection == -1){
-        lcd.setCursor(0,1);
-        lcd.print("Returning 4 nxt");
+        digitalWrite(heater,LOW);
+        stepper.move(-pos);
       }
+      else{
+        digitalWrite(heater,HIGH);
+        stepper.move(pos);
+      }
+//      Serial.print("running ");
+//      Serial.print(motorDirection);
+//      Serial.print(" currentPass:");
+//      Serial.println(currentPassCount);
+      stepper.run();
+      
     }
     else{
       handleEndOfProgram();
@@ -128,13 +139,13 @@ void initialize(){
     digitalWrite(heater,LOW);
     stepper.setAcceleration(500000);
     stepper.setMaxSpeed(1000000);
+    motorDirection = -1;
     programStatus = Initializing;
+    
   }
   
   if (!startOfTrackSensorValue){
-    Serial.println("init");
-    lcd.setCursor(0,1);
-    lcd.print("Initializing...  ");
+    //Serial.println("init");
     stepper.move(pos * -1);
     stepper.run();
   }
@@ -218,7 +229,7 @@ void handleEndOfProgram(){
 }
 
 void handleDisplay(){
-  if (programStatus == 0){
+  if (programStatus == Stopped){
     lcd.setCursor(0, 0);
     lcd.print("Passes: ");      
     lcd.print(passes);
@@ -245,11 +256,24 @@ void handleDisplay(){
     lcd.print("  Spd: ");
     lcd.print(speed);
     lcd.setCursor(0,1);
-    lcd.print("pos ");
-    
-    lcd.print("Remaining: ");
-    lcd.print(passes - currentPassCount);
-    
+    if (motorDirection == 1){
+      if (passes - currentPassCount > 0){
+        lcd.print("like it's hot ");
+        lcd.print(passes - currentPassCount);
+        lcd.print("       ");
+      }
+      else{
+        lcd.print("Last pass yo!         ");
+      }
+    }
+    else{
+        if (programStatus == Running){
+          lcd.print("beep beep beep       ");
+        }
+        else{
+          lcd.print("Chill Winston...  ");
+        }
+    }
   }
 }
 
