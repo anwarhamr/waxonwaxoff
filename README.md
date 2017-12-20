@@ -36,5 +36,5 @@
 ## Thank you to
 * Kelvin Wu and Maiden Ski's for letting me help with this project.
 * Elli for putting me up, putting up with me and the feed.
-* Mark Lehmkule for giving me the time off :D
+* Mark Lehmkuhle for giving me the time off :D
 * Youtube University
