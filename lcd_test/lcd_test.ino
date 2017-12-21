@@ -10,6 +10,7 @@ http://www.arduino.cc/en/Tutorial/LiquidCrystal
  // include the library code:
 #include <LiquidCrystal.h>
 #include <AccelStepper.h>
+#include "eepromHelper.h"
 
 #define btnLeft ((int) 1)
 #define btnUp ((int) 2)
@@ -22,7 +23,9 @@ http://www.arduino.cc/en/Tutorial/LiquidCrystal
 #define motor1 ((int)12)
 #define motor2 ((int)13)
 //#define enablePin ((int)??)
-#define speedMultiplier ((unsigned long)500000)
+
+//change these values for run configuration
+#define speedMultiplier ((unsigned long)250000)
 #define speedMax       ((unsigned long)4000000)
 #define heaterWarmupPeriod ((int)10)
 
@@ -53,6 +56,14 @@ int trackSensorOn = LOW;
 int programStatus = 0; //0 stopped, 1 = initializing, 2 = running
 int heaterStatus = LOW;
 unsigned long warmupStartTime = 0;
+
+struct config_t
+{
+    int isConfigured; // our first write we'll have this set to 999
+    long passes;
+    int speed;
+} configuration;
+
 unsigned char GetKey(int value)
 {
   //Serial.print("keydown");
@@ -83,13 +94,24 @@ void setup()
   
   //init values
   sensorValue  = 1023;
-  passes = 2;
-  speed  = 1;
+  EEPROM_readAnything(0, configuration);
+  Serial.print("config values");
+  Serial.print(configuration.passes);
+  Serial.println(configuration.speed);
+  
+  if (configuration.isConfigured == 999){
+    passes = configuration.passes;
+    speed  = configuration.speed;
+  }
+  else{
+    passes = 2;
+    speed  = 1;
+  }
   currentPassCount = 1;
   
   //stepper.setEnablePin(enablePin);
   
-  digitalWrite(heater,LOW);
+  updateHeater(LOW);
   Serial.begin(9600); 
   delay(2000);
 }
@@ -100,8 +122,9 @@ void loop()
   if (programStatus == Stopped){
     handleDisplay(); 
   }
-  else if (millis()% 600 == 1){
+  else if (millis()% 600 == 1 && programStatus != Running){
     handleDisplay(); 
+    //runtime update will happen only after each track sensor is touched.
   }
   //if (programStatus == Stopped){
     handleButtons();
@@ -111,6 +134,10 @@ void loop()
   }
   if (programStatus == Initialized){
     Serial.println("setting run params");
+    configuration.isConfigured = 999;
+    configuration.passes = passes;
+    configuration.speed = speed;
+    EEPROM_writeAnything(0, configuration);
     stepper.setAcceleration(speed* speedMultiplier);
     //stepper.setMaxSpeed(speed* speedMultiplier);
     programStatus = Warmup;
@@ -118,8 +145,7 @@ void loop()
   }
   if (programStatus == Warmup){
     if (heaterStatus == LOW){
-      digitalWrite(heater,HIGH);
-      heaterStatus = HIGH;
+      updateHeater(HIGH);
     }
     if (millis() - warmupStartTime > heaterWarmupPeriod * 1000){
       programStatus = Running;
@@ -131,15 +157,13 @@ void loop()
     if (currentPassCount <= passes || motorDirection == -1){
       if (motorDirection == -1){
         if (heaterStatus != LOW){
-          digitalWrite(heater,LOW);
-          heaterStatus = LOW;
+          updateHeater(LOW);
         }
         stepper.move(-pos);
       }
       else{
         if (heaterStatus != HIGH){
-          digitalWrite(heater,HIGH);
-          heaterStatus = HIGH;
+          updateHeater(HIGH);
         }
         stepper.move(pos);
       }
@@ -160,8 +184,7 @@ void initialize(){
   //turn off heater
   if (programStatus == Starting){
     Serial.println("setting values for initialization");
-    digitalWrite(heater,LOW);
-    heaterStatus = LOW;
+    updateHeater(LOW);
     stepper.setAcceleration(3000000);
     //stepper.setMaxSpeed(1000000);
     motorDirection = -1;
@@ -237,7 +260,13 @@ void handleEndOfProgram(){
     Serial.println("ending...");
     programStatus = Stopped;
     currentPassCount = 1;
+    updateHeater(LOW);
     stepper.disableOutputs();
+}
+
+void updateHeater(int value){
+  heaterStatus = value;
+  digitalWrite(heater,heaterStatus);
 }
 
 void handleDisplay(){
@@ -266,7 +295,7 @@ void handleDisplay(){
     lcd.setCursor(0,1);
     if (motorDirection == 1){
       if (passes - currentPassCount > 0){
-        lcd.print("patiences ");
+        lcd.print("Remaining ");
         lcd.print(passes - currentPassCount);
         lcd.print("       ");
       }
@@ -297,6 +326,7 @@ void handleEndOfTrackSensors(){
 //    Serial.print(endOfTrackSensorValue);
 //    Serial.println(" ");
     
+    stepper.stop();
     if (startOfTrackSensorValue){
       motorDirection = 1;
       //Serial.println("start of track");
@@ -308,6 +338,8 @@ void handleEndOfTrackSensors(){
       }
 //      Serial.println("end of track");
     }
+    
+    handleDisplay(); 
   }
   trackSensorOn = endOfTrackSensorValue || startOfTrackSensorValue;
 }
